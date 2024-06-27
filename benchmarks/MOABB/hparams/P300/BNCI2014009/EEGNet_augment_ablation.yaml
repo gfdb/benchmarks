@@ -1,0 +1,279 @@
+seed: 1234
+__set_torchseed: !apply:torch.manual_seed [!ref <seed>]
+
+# DIRECTORIES
+data_folder: !PLACEHOLDER  #'/path/to/dataset'. The dataset will be automatically downloaded in this folder
+cached_data_folder: !PLACEHOLDER  #'/path/to/pickled/dataset'
+output_folder: !PLACEHOLDER #'path/to/results'
+
+# DATASET HPARS
+# Defining the MOABB dataset.
+dataset: !new:moabb.datasets.BNCI2014009
+save_prepared_dataset: True # set to True if you want to save the prepared dataset as a pkl file to load and use afterwards
+data_iterator_name: !PLACEHOLDER
+target_subject_idx: !PLACEHOLDER
+target_session_idx: !PLACEHOLDER
+events_to_load: null # all events will be loaded
+original_sample_rate: 256 # Original sampling rate provided by dataset authors
+sample_rate: 128 # Target sampling rate (Hz)
+# band-pass filtering cut-off frequencies
+fmin: 0.12 # @orion_step1: --fmin~"uniform(0.1, 5, precision=2)"
+fmax: 43.3 # @orion_step1: --fmax~"uniform(20.0, 50.0, precision=3)"
+n_classes: 2
+# tmin, tmax respect to stimulus onset that define the interval attribute of the dataset class
+# trial begins (0 s), cue (2 s, 1.25 s long); each trial is 6 s long
+# dataset interval starts from 2
+# -->tmin tmax are referred to this start value (e.g., tmin=0.5 corresponds to 2.5 s)
+tmin: 0.
+tmax: 0.8
+# number of steps used when selecting adjacent channels from a seed channel (default at Cz)
+n_steps_channel_selection: 3 # @orion_step1: --n_steps_channel_selection~"uniform(1, 3,discrete=True)"
+T: !apply:math.ceil
+    - !ref <sample_rate> * (<tmax> - <tmin>)
+C: 16
+# We here specify how to perfom test:
+# - If test_with: 'last' we perform test with the latest model.
+# - if test_with: 'best, we perform test with the best model (according to the metric specified in test_key)
+# The variable avg_models can be used to average the parameters of the last (or best) N saved models before testing.
+# This can have a regularization effect. If avg_models: 1, the last (or best) model is used directly.
+test_with: 'last' # 'last' or 'best'
+test_key: "f1" # Possible opts: "loss", "f1", "auc", "acc"
+
+# METRICS
+f1: !name:sklearn.metrics.f1_score
+    pos_label: 1
+acc: !name:sklearn.metrics.balanced_accuracy_score
+cm: !name:sklearn.metrics.confusion_matrix
+metrics:
+    f1: !ref <f1>
+    acc: !ref <acc>
+    cm: !ref <cm>
+# TRAINING HPARS
+n_train_examples: 100  # it will be replaced in the train script
+# checkpoints to average
+avg_models: 11 # @orion_step1: --avg_models~"uniform(1, 15,discrete=True)"
+number_of_epochs: 894 # @orion_step1: --number_of_epochs~"uniform(250, 1000, discrete=True)"
+lr: 0.0001 # @orion_step1: --lr~"choices([0.01, 0.005, 0.001, 0.0005, 0.0001])"
+# Learning rate scheduling (cyclic learning rate is used here)
+max_lr: !ref <lr> # Upper bound of the cycle (max value of the lr)
+base_lr: 0.00000001 # Lower bound in the cycle (min value of the lr)
+step_size_multiplier: 5 #from 2 to 8
+step_size: !apply:round
+    - !ref <step_size_multiplier> * <n_train_examples> / <batch_size>
+lr_annealing: !new:speechbrain.nnet.schedulers.CyclicLRScheduler
+    base_lr: !ref <base_lr>
+    max_lr: !ref <max_lr>
+    step_size: !ref <step_size>
+label_smoothing: 0.0
+loss: !name:speechbrain.nnet.losses.nll_loss
+    label_smoothing: !ref <label_smoothing>
+optimizer: !name:torch.optim.Adam
+    lr: !ref <lr>
+epoch_counter: !new:speechbrain.utils.epoch_loop.EpochCounter  # epoch counter
+    limit: !ref <number_of_epochs>
+batch_size_exponent: 6 # @orion_step1: --batch_size_exponent~"uniform(4, 6,discrete=True)"
+batch_size: !ref 2 ** <batch_size_exponent>
+valid_ratio: 0.2
+
+# DATA AUGMENTATION
+
+# Waveform Augmenter (combining augmentations)
+time_parallel_augment: False  # Apply augmentations in parallel if True, or sequentially if False
+time_concat_original: True  # Concatenate original signals to the training batch if True
+time_repeat_augment: 1  # Number of times to apply augmentation
+time_shuffle_augmentations: False  # Shuffle order of augmentations if True, else use specified order
+time_min_augmentations: 1  # Min number of augmentations to apply
+time_max_augmentations: 1  # Max number of augmentations to apply
+time_augment_prob: 1.0     # Probability to apply time augmentation
+
+enable_cutcat: False
+enable_rand_amp: False
+enable_time_shift: False
+enable_add_noise_white: False
+enable_add_noise_pink: False
+enable_drop_chunk: False
+enable_dropfreq: False
+enable_speed_perturb: False
+enable_clipping: False
+enable_channel_drop: False
+enable_channel_swap: False
+enable_randomize_channels: False
+enable_sign_flip: False
+enable_time_reverse: False
+enable_freq_shift: False
+enable_ft_surrogate: False
+
+# cutcat (disabled when min_num_segments=max_num_segments=1)
+min_num_segments: 1 
+max_num_segments: 3 # @orion_step2: --max_num_segments~"uniform(2, 6, discrete=True)"
+cutcat: !new:speechbrain.augment.time_domain.CutCat
+    min_num_segments: !ref <min_num_segments>
+    max_num_segments: !ref <max_num_segments>
+# random amplitude gain between 0.5-1.5 uV (disabled when amp_delta=0.)
+amp_delta: 0.008079 # @orion_step2: --amp_delta~"uniform(0.0, 0.5)"
+rand_amp: !new:speechbrain.augment.time_domain.RandAmp
+    amp_low: !ref 1 - <amp_delta>
+    amp_high: !ref 1 + <amp_delta>
+# random shifts between -300 ms to 300 ms (disabled when shift_delta=0.)
+shift_delta_: 25 # orion_step2: --shift_delta_~"uniform(0, 25, discrete=True)"
+shift_delta: !ref 1e-2 * <shift_delta_> # 0.250 # 0.-0.25 with steps of 0.01
+min_shift: !apply:math.floor
+    - !ref 0 - <sample_rate> * <shift_delta>
+max_shift: !apply:math.floor
+    - !ref 0 + <sample_rate> * <shift_delta>
+time_shift: !new:speechbrain.augment.freq_domain.RandomShift
+    min_shift: !ref <min_shift>
+    max_shift: !ref <max_shift>
+    dim: 1
+# injection of gaussian white noise
+snr_white_low: 0 # @orion_step2: --snr_white_low~"uniform(0.0, 15, precision=2)"
+snr_white_high: 20
+add_noise_white: !new:speechbrain.augment.time_domain.AddNoise
+    snr_low: !ref <snr_white_low>
+    snr_high: !ref <snr_white_high>
+
+snr_pink_low: 0 # @orion_step2: --snr_pink_low~"uniform(0.0, 15, precision=2)"
+snr_pink_high: 20
+add_noise_pink: !new:speechbrain.augment.time_domain.AddNoise
+    snr_low: !ref <snr_pink_low>
+    snr_high: !ref <snr_pink_high>
+
+drop_chunk_count_low: 1  # Min number of audio chunks to drop
+drop_chunk_count_high: 3  # Max number of audio chunks to drop
+drop_chunk_length_low: 1000  # Min length of audio chunks to drop
+drop_chunk_length_high: 2000  # Max length of audio chunks to drop
+drop_chunk: !new:speechbrain.augment.time_domain.DropChunk
+    drop_length_low: !ref <drop_chunk_length_low>
+    drop_length_high: !ref <drop_chunk_length_high>
+    drop_count_low: !ref <drop_chunk_count_low>
+    drop_count_high: !ref <drop_chunk_count_high>
+
+drop_freq_low: 0  # Min frequency band dropout probability
+drop_freq_high: 1  # Max frequency band dropout probability (1.0 is the largest freq)
+drop_freq_count_low: 1  # Min number of frequency bands to drop
+drop_freq_count_high: 3  # Max number of frequency bands to drop
+drop_freq_width: 0.05  # Width of frequency bands to drop
+drop_freq: !new:speechbrain.augment.time_domain..DropFreq
+    drop_freq_low: !ref <drop_freq_low>
+    drop_freq_high: !ref <drop_freq_high>
+    drop_freq_count_low: !ref <drop_freq_count_low>
+    drop_freq_count_high: !ref <drop_freq_count_high>
+    drop_freq_width: !ref <drop_freq_width>
+
+speed_changes: [85, 90, 95, 105, 110, 115]  # List of speed changes for time-stretching
+speed_perturb: !new:speechbrain.augment.time_domain.SpeedPerturb
+    orig_freq: !ref <sample_rate>
+    speeds: !ref <speed_changes>
+
+clip_low: 0.1  # Min amplitude to clip
+clip_high: 0.5  # Max amplitude to clip
+clipping: !new:speechbrain.augment.time_domain.DoClip
+    clip_low: !ref <clip_low>
+    clip_high: !ref <clip_high>
+
+channel_drop_rate: 0.1 # The channel droput factor
+channel_drop: !new:speechbrain.augment.time_domain.ChannelDrop
+    drop_rate: !ref <channel_drop_rate>
+
+channel_min_swap: 0 # The mininum number of channels to swap
+channel_max_swap: 0 # The maximum number of channels to swap
+channel_swap: !new:speechbrain.augment.time_domain.ChannelSwap
+    min_swap: !ref <channel_min_swap>
+    max_swap: !ref <channel_max_swap>
+
+# randomize_channels: to be implemented
+# sign_flip: to be implemented
+# time_reverse: to be implemented
+# freq_shift: to be implemented
+# ft_surrogate: to be implemented
+
+
+repeat_augment: 1 # @orion_step1: --repeat_augment 0
+augment: !new:speechbrain.augment.augmenter.Augmenter
+    parallel_augment: !ref <time_parallel_augment>
+    concat_original: !ref <time_concat_original>
+    repeat_augment: !ref <time_repeat_augment>
+    shuffle_augmentations: !ref <time_shuffle_augmentations>
+    min_augmentations: !ref <time_min_augmentations>
+    max_augmentations: !ref <time_max_augmentations>
+    augment_prob: !ref <time_augment_prob>
+    augmentations: [
+        !ref <cutcat>,
+        !ref <rand_amp>,
+        !ref <time_shift>,
+        !ref <add_noise_white>,
+        !ref <add_noise_pink>,
+        !ref <drop_chunk>,
+        !ref <drop_freq>,
+        !ref <speed_perturb>,
+        !ref <clipping>,
+        !ref <channel_drop>,
+        !ref <channel_swap>]
+        # !ref <randomize_channels>,
+        # !ref <sign_flip>,
+        # !ref <time_reverse>,
+        # !ref <freq_shift>,
+        # !ref <ft_surrogate>]
+    enable_augmentations: [
+        !ref <enable_cutcat>,
+        !ref <enable_rand_amp>,
+        !ref <enable_time_shift>,
+        !ref <enable_add_noise_white>,
+        !ref <enable_add_noise_pink>,
+        !ref <enable_drop_chunk>,
+        !ref <enable_dropfreq>,
+        !ref <enable_speed_perturb>,
+        !ref <enable_clipping>,
+        !ref <enable_channel_drop>,
+        !ref <enable_channel_swap>]
+        # !ref <enable_randomize_channels>,
+        # !ref <enable_sign_flip>,
+        # !ref <enable_time_reverse>,
+        # !ref <enable_freq_shift>,
+        # !ref <enable_ft_surrogate>]
+
+# DATA NORMALIZATION
+dims_to_normalize: (0, 1, 2) # normalize across batch, time, and channels
+normalize: !name:speechbrain.processing.signal_processing.mean_std_norm
+    dims: !ref <dims_to_normalize>
+# MODEL
+input_shape: [null, !ref <T>, !ref <C>, null]
+cnn_temporal_kernels: 58 # @orion_step1: --cnn_temporal_kernels~"uniform(4, 64,discrete=True)"
+cnn_temporal_kernelsize: 42 # @orion_step1: --cnn_temporal_kernelsize~"uniform(24, 62,discrete=True)"
+# depth multiplier for the spatial depthwise conv. layer
+cnn_spatial_depth_multiplier: 3 # @orion_step1: --cnn_spatial_depth_multiplier~"uniform(1, 4,discrete=True)"
+cnn_spatial_max_norm: 1.  # kernel max-norm constaint of the spatial depthwise conv. layer
+cnn_spatial_pool: 4
+cnn_septemporal_depth_multiplier: 1  # depth multiplier for the separable temporal conv. layer
+cnn_septemporal_point_kernels_ratio_: 5 # @orion_step1: --cnn_septemporal_point_kernels_ratio_~"uniform(0, 8, discrete=True)"
+cnn_septemporal_point_kernels_ratio: !ref <cnn_septemporal_point_kernels_ratio_> / 4
+## number of temporal filters in the separable temporal conv. layer
+cnn_septemporal_point_kernels_: !ref <cnn_temporal_kernels> * <cnn_spatial_depth_multiplier> * <cnn_septemporal_depth_multiplier>
+cnn_septemporal_point_kernels: !apply:math.ceil
+    - !ref <cnn_septemporal_point_kernels_ratio> * <cnn_septemporal_point_kernels_> + 1
+cnn_septemporal_kernelsize_: 17 # @orion_step1: --cnn_septemporal_kernelsize_~"uniform(3, 24,discrete=True)"
+max_cnn_spatial_pool: 4
+cnn_septemporal_kernelsize: !apply:round
+    - !ref <cnn_septemporal_kernelsize_> * <max_cnn_spatial_pool> / <cnn_spatial_pool>
+cnn_septemporal_pool: 4 # @orion_step1: --cnn_septemporal_pool~"uniform(1, 8,discrete=True)"
+cnn_pool_type: 'avg'
+dense_max_norm: 0.25  # kernel max-norm constaint of the dense layer
+dropout: 0.3903 # @orion_step1: --dropout~"uniform(0.0, 0.5)"
+activation_type: 'elu'
+
+model: !new:models.EEGNet.EEGNet
+    input_shape: !ref <input_shape>
+    cnn_temporal_kernels: !ref <cnn_temporal_kernels>
+    cnn_temporal_kernelsize: [!ref <cnn_temporal_kernelsize>, 1]
+    cnn_spatial_depth_multiplier: !ref <cnn_spatial_depth_multiplier>
+    cnn_spatial_max_norm: !ref <cnn_spatial_max_norm>
+    cnn_spatial_pool: [!ref <cnn_spatial_pool>, 1]
+    cnn_septemporal_depth_multiplier: !ref <cnn_septemporal_depth_multiplier>
+    cnn_septemporal_point_kernels: !ref <cnn_septemporal_point_kernels>
+    cnn_septemporal_kernelsize: [!ref <cnn_septemporal_kernelsize>, 1]
+    cnn_septemporal_pool: [!ref <cnn_septemporal_pool>, 1]
+    cnn_pool_type: !ref <cnn_pool_type>
+    activation_type: !ref <activation_type>
+    dense_max_norm: !ref <dense_max_norm>
+    dropout: !ref <dropout>
+    dense_n_neurons: !ref <n_classes>
