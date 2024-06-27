@@ -89,8 +89,8 @@ time_augment_prob: 1.0     # Probability to apply time augmentation
 enable_cutcat: False
 enable_rand_amp: False
 enable_time_shift: False
-enable_add_noise_white: False
-enable_add_noise_pink: False
+enable_add_white_noise: False
+enable_add_pink_noise: False
 enable_drop_chunk: False
 enable_dropfreq: False
 enable_speed_perturb: False
@@ -128,13 +128,13 @@ time_shift: !new:speechbrain.augment.freq_domain.RandomShift
 # injection of gaussian white noise
 snr_white_low: 0 # @orion_step2: --snr_white_low~"uniform(0.0, 15, precision=2)"
 snr_white_high: 20
-add_noise_white: !new:speechbrain.augment.time_domain.AddNoise
+add_white_noise: !new:speechbrain.augment.time_domain.AddNoise
     snr_low: !ref <snr_white_low>
     snr_high: !ref <snr_white_high>
 
 snr_pink_low: 0 # @orion_step2: --snr_pink_low~"uniform(0.0, 15, precision=2)"
 snr_pink_high: 20 
-add_noise_pink: !new:speechbrain.augment.time_domain.AddNoise
+add_pink_noise: !new:speechbrain.augment.time_domain.AddNoise
     snr_low: !ref <snr_pink_low>
     snr_high: !ref <snr_pink_high>
 
@@ -201,8 +201,8 @@ augment: !new:speechbrain.augment.augmenter.Augmenter
         !ref <cutcat>,
         !ref <rand_amp>,
         !ref <time_shift>,
-        !ref <add_noise_white>,
-        !ref <add_noise_pink>,
+        !ref <add_white_noise>,
+        !ref <add_pink_noise>,
         !ref <drop_chunk>,
         !ref <drop_freq>,
         !ref <speed_perturb>,
@@ -218,8 +218,8 @@ augment: !new:speechbrain.augment.augmenter.Augmenter
         !ref <enable_cutcat>,
         !ref <enable_rand_amp>,
         !ref <enable_time_shift>,
-        !ref <enable_add_noise_white>,
-        !ref <enable_add_noise_pink>,
+        !ref <enable_add_white_noise>,
+        !ref <enable_add_pink_noise>,
         !ref <enable_drop_chunk>,
         !ref <enable_dropfreq>,
         !ref <enable_speed_perturb>,
