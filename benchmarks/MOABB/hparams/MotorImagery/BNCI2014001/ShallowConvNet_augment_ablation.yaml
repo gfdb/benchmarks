@@ -182,8 +182,11 @@ channel_swap: !new:speechbrain.augment.time_domain.ChannelSwap
     max_swap: !ref <channel_max_swap>
 
 # randomize_channels: to be implemented
-# sign_flip: to be implemented
-# time_reverse: to be implemented
+sign_flip_prob: 0.5
+sign_flip: !new:speechbrain.augment.time_domain.SignFlip
+    flip_prob: !ref <sign_flip_prob>
+
+time_reverse: !new:speechbrain.augment.time_domain.AxisReverse
 # freq_shift: to be implemented
 # ft_surrogate: to be implemented
 
@@ -208,10 +211,10 @@ augment: !new:speechbrain.augment.augmenter.Augmenter
         !ref <speed_perturb>,
         !ref <clipping>,
         !ref <channel_drop>,
-        !ref <channel_swap>]
+        !ref <channel_swap>,
+        !ref <sign_flip>,
+        !ref <time_reverse>]
         # !ref <randomize_channels>,
-        # !ref <sign_flip>,
-        # !ref <time_reverse>,
         # !ref <freq_shift>,
         # !ref <ft_surrogate>]
     enable_augmentations: [
@@ -225,15 +228,15 @@ augment: !new:speechbrain.augment.augmenter.Augmenter
         !ref <enable_speed_perturb>,
         !ref <enable_clipping>,
         !ref <enable_channel_drop>,
-        !ref <enable_channel_swap>]
+        !ref <enable_channel_swap>,
+        !ref <enable_sign_flip>,
+        !ref <time_reverse>]
         # !ref <enable_randomize_channels>,
-        # !ref <enable_sign_flip>,
-        # !ref <enable_time_reverse>,
         # !ref <enable_freq_shift>,
         # !ref <enable_ft_surrogate>]
 
 # DATA NORMALIZATION
-dims_to_normalize: (0,1,2) # normalize across batch, time, and channels
+dims_to_normalize: (0,1) # normalize across batch, time, and channels
 normalize: !name:speechbrain.processing.signal_processing.mean_std_norm
     dims: !ref <dims_to_normalize>
 # MODEL
